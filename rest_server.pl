@@ -60,8 +60,9 @@ get '/session/' => sub {
 
 		# check for old session
 #TODO check if DB operation was succesful
-		my $sql = 'SELECT id, created FROM session '
-			. 'WHERE user_id = ?';
+
+		my $sql = "SELECT id, datetime(created, 'localtime') AS created "
+			. 'FROM session WHERE user_id = ?';
 		my $session = $db->query($sql, ( $authorized_user_id ))->hash;
 
 		if ($session) {
@@ -74,7 +75,7 @@ get '/session/' => sub {
 		}
 
 		# create session
-	#TODO generate secure token
+#TODO generate secure token
 		my $new_session_token = '123abc';
 		my @values = (
 			$authorized_user_id,
