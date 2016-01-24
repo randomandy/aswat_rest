@@ -5,25 +5,112 @@ use warnings;
 
 use Mojolicious::Lite;
 use Mojo::SQLite;
-
-# Class to format data for debugging and logging
 use Data::Dumper;
+
+plugin 'basic_auth';
 
 # Rewriting the app handler into my own valid Perl object
 # quick note: 'app' is a keyword added by the Mojolicious framework
 my $app = app;
 
 #TODO add username/password validation/limit
-#TODO add oauth2 or other token handling
 #TODO add TLS
 #TODO add versioning
-#TODO add routes
-#TODO add db
 
 # Initialize SQLite DB
 #TODO move to config
 my $sql = Mojo::SQLite->new('sqlite:aswat_shop.db');
 my $db 	= $sql->db;
+
+# Route to get new session via GET /product
+get '/session/' => sub {
+	my ($self) = @_;
+
+	$app->log->debug("[Auth] Trying to authorize basic auth: "
+		. $self->req->headers->authorization);
+
+	# Fetch all users from DB for later authentication
+	my $sql   = 'SELECT id, name, password FROM user';
+	my @users = $db->query($sql)->hashes->each;
+	my %user_pwd_strings;
+
+	foreach my $user (@users) {
+		# Copy user string for basic auth and store user ID for session
+		my $auth_string = $user->{name} . " " . $user->{password};
+		$user_pwd_strings{$auth_string} = $user->{id};
+	}
+	$app->log->debug("[/session] All users: ". Dumper(\%user_pwd_strings));
+
+	# Authenticate user passed via basic auth with previsously fetched users
+	# and create new session in DB
+
+	# If user is authenticated
+	my $authorized_user_id;
+	if ($self->basic_auth( realm => sub {
+			if (exists $user_pwd_strings{"@_"}) {
+				$authorized_user_id = $user_pwd_strings{"@_"};
+				return 1;
+			}
+		}))
+	{
+		$app->log->debug("User ID Authorized: '$authorized_user_id'");
+
+		# Check for old session
+#TODO check if DB operation was successful
+
+		my $sql = "SELECT id, datetime(created, 'localtime') AS created "
+			. 'FROM session WHERE user_id = ?';
+		my $session = $db->query($sql, ( $authorized_user_id ))->hash;
+
+		if ($session) {
+			$app->log->debug("Session already exists for User ID "
+				. "'$authorized_user_id': " . Dumper($session));
+
+#TODO add transaction
+			# Delete old session
+			my $sql = "DELETE FROM session WHERE user_id = ?";
+			$db->query($sql, $authorized_user_id)->hash;
+		}
+
+		# create session
+#TODO generate secure token
+		my $new_session_token = "123abc " . localtime;
+		my @values = (
+			$authorized_user_id,
+			$new_session_token
+		);
+#TODO check if DB operation was succesful
+		$sql = 'INSERT INTO session (user_id, token) VALUES (?, ?)';
+		$db->query($sql, @values);
+
+		$app->log->debug("New session key '$new_session_token' added for User "
+			. "ID: '$authorized_user_id'");
+
+		return $self->render( json => {session_token => $new_session_token} );
+	} 
+
+	# Deny access if DB user validation was unsuccessful
+	$app->log->debug("User access denied");
+
+	return;
+};
+
+# Route to remove session and logout user DELETE /session
+del '/session' => sub {
+	my ($self) = @_;
+
+	# Fetch the session token from the HTTP header
+#TODO validate session token (max length)
+	my $session_token = $self->req->headers->header('x-aswat-token');
+
+#TODO add transaction
+	# Delete old session
+	my $sql = "DELETE FROM session WHERE token = ?";
+	$db->query($sql, $session_token)->hash;
+
+	# return the mock data in JSON
+	return $self->render( json => {success => 1} );
+};
 
 # Route to fetch all products via GET /product
 # No need for AUTH here, it's public data
@@ -318,6 +405,28 @@ sub _get_product {
 	return { products => \@products };
 }
 
+sub _is_authorized {
+	my ($session_token) = @_;
+
+	# Check if session token is valid/exists in db
+	my $sql = "SELECT id, datetime(created, 'localtime') AS created "
+		. 'FROM session WHERE token = ?';
+	my $session = $db->query($sql, $session_token)->hash;
+
+	return
+		unless $session->{id};
+
+	# Check if token is expired
+	my ($ss,$mm,$hh,$day,$month,$year) = strptime($session->{created});
+	my ($ss_now,$mm_now,$hh_now,$day_now,$month_now,$year_now) = localtime;
+
+	return
+		unless $year != $year_now
+			&& $month != $month_now
+			&& $day != $day_now;
+
+	return 1;
+}
+
 # Run the application
 $app->start;
-
