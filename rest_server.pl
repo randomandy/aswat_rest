@@ -260,10 +260,39 @@ put '/user/:userid' => sub {
 
 	# Write debug to STDOUT
 	$app->log->debug("[/user] Session: " . Dumper($session_token));
-	# $app->log->debug("[/cart] Adding product '$product_id' to cart '$cart_id'");
 
 	# return the mock data in JSON
 	return $self->render( json => { success => 1 } );
+};
+
+# Route get all users (admin only) via GET /user
+get '/user' => sub {
+	my ($self) = @_;
+
+	# Fetch the session token from the HTTP header
+#TODO validate session token (max length)
+	my $session_token = $self->req->headers->header('x-aswat-token');
+
+#TODO fetch all users from DB
+		my @mock_users = (
+			{
+				id 		 => 1,
+				name 	 => 'billgates',
+				password => 'linuxrules'
+			},
+			{
+				id 		 => 2,
+				name 	 => 'linustorvalds',
+				password => 'ilovexbox'
+			},
+		);
+
+
+	# Write debug to STDOUT
+	$app->log->debug("[/user] Session: " . Dumper($session_token));
+
+	# return the mock data in JSON
+	return $self->render( json => { users => \@mock_users } );
 };
 
 # Run the application
