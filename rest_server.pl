@@ -8,6 +8,8 @@ use feature qw(say);
 use Path::Class 'file';
 use Mojolicious::Lite;
 
+# Class to format data for debugging and logging
+use Data::Dumper;
 
 # Rewriting the app handler into my own valid Perl object
 # quick note: 'app' is a keyword added by the Mojolicious framework
@@ -24,6 +26,7 @@ my $app = app;
 get '/product/' => sub {
 	my ($self) = @_;
 
+#TODO replace with real data
 	my @mock_products = (
 		{
 			id => 1,
@@ -47,6 +50,7 @@ get '/product/:id' => sub {
 
 	my $product_id = $self->stash('id');
 
+#TODO replace with real data
 	my $mock_product_details = {
 		id => 2,
 		name => 'death star plans',
@@ -55,6 +59,40 @@ get '/product/:id' => sub {
 
 	# return the mock data in JSON
 	return $self->render( json => $mock_product_details );
+};
+
+# Route to fetch user cart via GET /cart
+get '/cart' => sub {
+	my ($self) = @_;
+
+	# Fetch the session token from the HTTP header
+	my $session_token = $self->req->headers->header('x-aswat-token');
+
+#TODO fetch user cart based on session token
+
+	# Write debug to STDOUT
+	$app->log->debug("[/cart] Session: " . Dumper($session_token));
+
+	# MOCK DATA
+	my $cart_id = 1;
+	my @product_ids_in_cart = (
+		{
+			id => 1,
+			quantity => 1
+		},
+		{
+			id => 2,
+			quantity => 3
+		}
+	);
+
+	my $mock_cart = {
+		id => $cart_id,
+		products => \@product_ids_in_cart,
+	};
+
+	# return the mock data in JSON
+	return $self->render( json => $mock_cart );
 };
 
 # Run the application
