@@ -14,11 +14,8 @@ plugin 'basic_auth';
 my $app = app;
 
 #TODO add username/password validation/limit
-#TODO add oauth2 or other token handling
 #TODO add TLS
 #TODO add versioning
-#TODO add routes
-#TODO add db
 
 # Initialize SQLite DB
 #TODO move to config
