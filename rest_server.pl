@@ -3,9 +3,6 @@
 use strict;
 use warnings;
 
-use feature qw(say);
-
-use Path::Class 'file';
 use Mojolicious::Lite;
 use Mojo::SQLite;
 
