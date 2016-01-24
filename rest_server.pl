@@ -405,6 +405,28 @@ sub _get_product {
 	return { products => \@products };
 }
 
+sub _is_authorized {
+	my ($session_token) = @_;
+
+	# Check if session token is valid/exists in db
+	my $sql = "SELECT id, datetime(created, 'localtime') AS created "
+		. 'FROM session WHERE token = ?';
+	my $session = $db->query($sql, $session_token)->hash;
+
+	return
+		unless $session->{id};
+
+	# Check if token is expired
+	my ($ss,$mm,$hh,$day,$month,$year) = strptime($session->{created});
+	my ($ss_now,$mm_now,$hh_now,$day_now,$month_now,$year_now) = localtime;
+
+	return
+		unless $year != $year_now
+			&& $month != $month_now
+			&& $day != $day_now;
+
+	return 1;
+}
+
 # Run the application
 $app->start;
-
