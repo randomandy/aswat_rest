@@ -98,6 +98,23 @@ get '/session/' => sub {
 	return;
 };
 
+# Route to remove session and logout user DELETE /session
+del '/session' => sub {
+	my ($self) = @_;
+
+	# Fetch the session token from the HTTP header
+#TODO validate session token (max length)
+	my $session_token = $self->req->headers->header('x-aswat-token');
+
+#TODO add transaction
+	# Delete old session
+	my $sql = "DELETE FROM session WHERE token = ?";
+	$db->query($sql, $session_token)->hash;
+
+	# return the mock data in JSON
+	return $self->render( json => {success => 1} );
+};
+
 # Route to fetch all products via GET /product
 # No need for AUTH here, it's public data
 get '/product/' => sub {
