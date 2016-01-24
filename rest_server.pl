@@ -150,6 +150,12 @@ get '/cart' => sub {
 	my $sql  = 'SELECT id, product_id, quantity FROM cart WHERE user_id = ?';
 	my @cart = $db->query($sql, $user_id)->hashes->each;
 
+	# Get product details for each product in cart
+	foreach my $product (@cart) {
+		my $sql 		 = 'SELECT name FROM product WHERE id = ?';
+		$product->{name} = $db->query($sql, $product->{product_id})->hash;
+	}
+
 	$app->log->debug("Cart for User ID '$user_id': " . Dumper(\@cart));
 
 	# Return array of products in cart
