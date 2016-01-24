@@ -133,7 +133,7 @@ put '/cart/:productid' => sub {
 	return $self->render( json => $mock_cart );
 };
 
-# Route to remove product from user cart via PUT /cart/123
+# Route to remove product from user cart via DELETE /cart/123
 del '/cart/:productid' => sub {
 	my ($self) = @_;
 
