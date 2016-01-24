@@ -172,6 +172,77 @@ del '/cart/:productid' => sub {
 	return $self->render( json => $mock_cart );
 };
 
+# Route to add new user via POST /user
+#TODO add check for is_admin
+post '/user' => sub {
+	my ($self) = @_;
+
+	# Fetch the session token from the HTTP header
+#TODO validate session token (max length)
+	my $session_token = $self->req->headers->header('x-aswat-token');
+
+	$app->log->debug("[/user] Payload: " . Dumper($self->req->json));
+	my $hashref_payload = $self->req->json;
+
+	# Set default return values
+	my $success_status = 0;
+	my $return_message = "Unable to parse payload. Invalid format?";
+
+	# Check if payload was successfully decoded from JSON
+	if (ref($hashref_payload) eq 'HASH') {
+
+#TODO Fetch all users (only usernames) from DB for later authentication
+		my @users = (
+			{
+				name 	 => 'billgates',
+				password => 'linuxrules'
+			},
+			{
+				name 	 => 'linustorvalds',
+				password => 'ilovexbox'
+			},
+		);
+
+		# Check if user already exists. Update or create
+		my $username_payload = $hashref_payload->{user};
+		my $user_exists 	 = 0;
+		foreach my $user_in_db (@users) {
+			$user_exists = 1
+				if $user_in_db->{name} eq $username_payload;
+		}
+
+		# If user exists, return error
+		if ($user_exists) {
+			$app->log->debug("User '$username_payload' already exists in DB");
+			$return_message = "Username already taken";
+
+		# If user doesn't exist, create new user
+		} else {
+			$app->log->debug("Creating new user '$username_payload'...");
+			$return_message = "New user added successfully";
+			$success_status = 1;
+
+			# Prepare data for DB
+			my @new_user = (
+				$hashref_payload->{user},
+				$hashref_payload->{password}
+			);
+#TODO write new user to DB
+#TODO add validation, prevent SQL injection
+		}
+	}
+
+	# Return JSON message with success status and message
+	return $self->render(
+		json => {
+			success => $success_status,
+			message => $return_message
+		}
+	);
+};
+
+
+
 # Run the application
 $app->start;
 
