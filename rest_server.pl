@@ -58,8 +58,8 @@ get '/session/' => sub {
 	{
 		$app->log->debug("User ID Authorized: '$authorized_user_id'");
 
-		# check for old session
-#TODO check if DB operation was succesful
+		# Check for old session
+#TODO check if DB operation was successful
 
 		my $sql = "SELECT id, datetime(created, 'localtime') AS created "
 			. 'FROM session WHERE user_id = ?';
@@ -69,14 +69,15 @@ get '/session/' => sub {
 			$app->log->debug("Session already exists for User ID "
 				. "'$authorized_user_id': " . Dumper($session));
 
-			# delete / update session
-
-			return $self->render( json => { session => $session} );
+#TODO add transaction
+			# Delete old session
+			my $sql = "DELETE FROM session WHERE user_id = ?";
+			$db->query($sql, $authorized_user_id)->hash;
 		}
 
 		# create session
 #TODO generate secure token
-		my $new_session_token = '123abc';
+		my $new_session_token = "123abc " . localtime;
 		my @values = (
 			$authorized_user_id,
 			$new_session_token
@@ -88,7 +89,7 @@ get '/session/' => sub {
 		$app->log->debug("New session key '$new_session_token' added for User "
 			. "ID: '$authorized_user_id'");
 
-		return $self->render( json => { session_token => $new_session_token} );
+		return $self->render( json => {session_token => $new_session_token} );
 	} 
 
 	# Deny access if DB user validation was unsuccessful
