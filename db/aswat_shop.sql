@@ -13,3 +13,10 @@ CREATE TABLE "product" (
   "name" TEXT NOT NULL,
   "stock" INTEGER DEFAULT 0
 );
+
+CREATE TABLE "cart" (
+  "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+  "product_id" INTEGER NOT NULL,
+  "quantity" INTEGER NOT NULL DEFAULT 1,
+  FOREIGN KEY ("product_id") REFERENCES "product"("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
