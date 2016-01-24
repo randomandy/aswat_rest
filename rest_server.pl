@@ -95,6 +95,44 @@ get '/cart' => sub {
 	return $self->render( json => $mock_cart );
 };
 
+# Route to add product to user cart via PUT /cart/123
+put '/cart/:productid' => sub {
+	my ($self) = @_;
+
+	# Fetch the session token from the HTTP header
+#TODO validate session token (max length)
+	my $session_token = $self->req->headers->header('x-aswat-token');
+
+	# Fetch product ID parameter
+#TODO validate ID (int, max length)
+	my $product_id = $self->stash('productid');
+
+	# MOCK DATA
+	my $cart_id = 1;
+	my @product_ids_in_cart = (
+		{
+			id => 1,
+			quantity => 1
+		},
+		{
+			id => 2,
+			quantity => 3
+		}
+	);
+
+	my $mock_cart = {
+		id => $cart_id,
+		products => \@product_ids_in_cart,
+	};
+
+	# Write debug to STDOUT
+	$app->log->debug("[/cart] Session: " . Dumper($session_token));
+	$app->log->debug("[/cart] Adding product '$product_id' to cart '$cart_id'");
+
+	# return the mock data in JSON
+	return $self->render( json => $mock_cart );
+};
+
 # Run the application
 $app->start;
 
