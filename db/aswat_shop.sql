@@ -7,3 +7,9 @@ CREATE TABLE "user" (
 );
 
 CREATE UNIQUE INDEX "user_name" ON "user" ("name");
+
+CREATE TABLE "product" (
+  "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+  "name" TEXT NOT NULL,
+  "stock" INTEGER DEFAULT 0
+);
