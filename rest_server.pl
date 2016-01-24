@@ -308,11 +308,11 @@ sub _get_product {
 		unless $product_id =~ m/^\d+$/;
 
 	my $sql = "SELECT id, name, stock FROM product";
-	$sql .= " WHERE id = $product_id"
+	$sql .= " WHERE id = ?"
 		if $product_id;
 
 	# Fetch all products from DB
-	my @products = $db->query($sql)->hashes->each;
+	my @products = $db->query($sql, $product_id)->hashes->each;
 
 	# return the processed data in JSON
 	return { products => \@products };
