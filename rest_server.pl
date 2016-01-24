@@ -5,6 +5,7 @@ use warnings;
 
 use Mojolicious::Lite;
 use Mojo::SQLite;
+use Date::Parse;
 use Data::Dumper;
 
 plugin 'basic_auth';
@@ -136,33 +137,23 @@ get '/cart' => sub {
 	my ($self) = @_;
 
 	# Fetch the session token from the HTTP header
-	my $session_token = $self->req->headers->header('x-aswat-token');
+	my $user_id = _is_authorized($self->req->headers->header('x-aswat-token'));
+	$app->log->debug("User ID extracted from session: " . Dumper($user_id));
 
-#TODO fetch user cart based on session token
+	# Return 401 if user is not authorized
+	unless ($user_id) {
+		$self->res->code(401);
+		return $self->render(json => {error => 'access denied'});
+	}
 
-	# Write debug to STDOUT
-	$app->log->debug("[/cart] Session: " . Dumper($session_token));
+	# Fetch all cart entries for logged in user
+	my $sql  = 'SELECT id, product_id, quantity FROM cart WHERE user_id = ?';
+	my @cart = $db->query($sql, $user_id)->hashes->each;
 
-	# MOCK DATA
-	my $cart_id = 1;
-	my @product_ids_in_cart = (
-		{
-			id => 1,
-			quantity => 1
-		},
-		{
-			id => 2,
-			quantity => 3
-		}
-	);
+	$app->log->debug("Cart for User ID '$user_id': " . Dumper(\@cart));
 
-	my $mock_cart = {
-		id => $cart_id,
-		products => \@product_ids_in_cart,
-	};
-
-	# return the mock data in JSON
-	return $self->render( json => $mock_cart );
+	# Return array of products in cart
+	return $self->render( json => \@cart );
 };
 
 # Route to add product to user cart via PUT /cart/123
@@ -409,7 +400,7 @@ sub _is_authorized {
 	my ($session_token) = @_;
 
 	# Check if session token is valid/exists in db
-	my $sql = "SELECT id, datetime(created, 'localtime') AS created "
+	my $sql = "SELECT id, user_id, datetime(created, 'localtime') AS created "
 		. 'FROM session WHERE token = ?';
 	my $session = $db->query($sql, $session_token)->hash;
 
@@ -421,11 +412,11 @@ sub _is_authorized {
 	my ($ss_now,$mm_now,$hh_now,$day_now,$month_now,$year_now) = localtime;
 
 	return
-		unless $year != $year_now
-			&& $month != $month_now
-			&& $day != $day_now;
+		if $year != $year_now
+			|| $month != $month_now
+			|| $day != $day_now;
 
-	return 1;
+	return $session->{user_id};
 }
 
 # Run the application
