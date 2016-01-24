@@ -241,7 +241,30 @@ post '/user' => sub {
 	);
 };
 
+# Route to update user via PUT /user/123
+put '/user/:userid' => sub {
+	my ($self) = @_;
 
+	# Fetch the session token from the HTTP header
+#TODO validate session token (max length)
+	my $session_token = $self->req->headers->header('x-aswat-token');
+
+	# Fetch product ID parameter
+#TODO validate ID (int, max length)
+	my $user_id = $self->stash('userid');
+
+	$app->log->debug("[/user] Payload: " . Dumper($self->req->json));
+	my $hashref_payload = $self->req->json;
+
+#TODO update user
+
+	# Write debug to STDOUT
+	$app->log->debug("[/user] Session: " . Dumper($session_token));
+	# $app->log->debug("[/cart] Adding product '$product_id' to cart '$cart_id'");
+
+	# return the mock data in JSON
+	return $self->render( json => { success => 1 } );
+};
 
 # Run the application
 $app->start;
