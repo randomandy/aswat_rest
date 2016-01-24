@@ -20,6 +20,27 @@ my $app = app;
 #TODO add routes
 #TODO add db
 
+# Route to fetch all products via GET /product
+get '/product/' => sub {
+	my ($self) = @_;
+
+	my @mock_products = (
+		{
+			id => 1,
+			name => 'the one ring',
+			stock => 1
+		},
+		{
+			id => 2,
+			name => 'death star plans',
+			stock => 7
+		}
+	);
+
+	# return the mock data in JSON
+	return $self->render( json => { products => \@mock_products } );
+};
+
 # Run the application
 $app->start;
 
