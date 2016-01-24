@@ -41,6 +41,22 @@ get '/product/' => sub {
 	return $self->render( json => { products => \@mock_products } );
 };
 
+# Route to fetch product details via GET /product/123
+get '/product/:id' => sub {
+	my ($self) = @_;
+
+	my $product_id = $self->stash('id');
+
+	my $mock_product_details = {
+		id => 2,
+		name => 'death star plans',
+		stock => 7
+	};
+
+	# return the mock data in JSON
+	return $self->render( json => $mock_product_details );
+};
+
 # Run the application
 $app->start;
 
