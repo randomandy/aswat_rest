@@ -295,6 +295,27 @@ get '/user' => sub {
 	return $self->render( json => { users => \@mock_users } );
 };
 
+# Route to update user via PUT /user/123
+del '/user/:userid' => sub {
+	my ($self) = @_;
+
+	# Fetch the session token from the HTTP header
+#TODO validate session token (max length)
+	my $session_token = $self->req->headers->header('x-aswat-token');
+
+	# Fetch product ID parameter
+#TODO validate ID (int, max length)
+	my $user_id = $self->stash('userid');
+
+#TODO delete user
+
+	# Write debug to STDOUT
+	$app->log->debug("[/user] Session: " . Dumper($session_token));
+
+	# return the mock data in JSON
+	return $self->render( json => { success => 1 } );
+};
+
 # Run the application
 $app->start;
 
