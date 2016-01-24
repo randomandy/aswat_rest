@@ -7,6 +7,7 @@ use feature qw(say);
 
 use Path::Class 'file';
 use Mojolicious::Lite;
+use Mojo::SQLite;
 
 # Class to format data for debugging and logging
 use Data::Dumper;
@@ -22,26 +23,18 @@ my $app = app;
 #TODO add routes
 #TODO add db
 
+# Initialize SQLite DB
+#TODO move to config
+my $sql = Mojo::SQLite->new('sqlite:aswat_shop.db');
+my $db 	= $sql->db;
+
 # Route to fetch all products via GET /product
+# No need for AUTH here, it's public data
 get '/product/' => sub {
 	my ($self) = @_;
 
-#TODO replace with real data
-	my @mock_products = (
-		{
-			id => 1,
-			name => 'the one ring',
-			stock => 1
-		},
-		{
-			id => 2,
-			name => 'death star plans',
-			stock => 7
-		}
-	);
-
-	# return the mock data in JSON
-	return $self->render( json => { products => \@mock_products } );
+	# return the processed data in JSON
+	return $self->render( json => _get_product() );
 };
 
 # Route to fetch product details via GET /product/123
@@ -50,15 +43,8 @@ get '/product/:id' => sub {
 
 	my $product_id = $self->stash('id');
 
-#TODO replace with real data
-	my $mock_product_details = {
-		id => 2,
-		name => 'death star plans',
-		stock => 7
-	};
-
-	# return the mock data in JSON
-	return $self->render( json => $mock_product_details );
+	# return the processed data in JSON
+	return $self->render( json => _get_product($product_id) );
 };
 
 # Route to fetch user cart via GET /cart
@@ -315,6 +301,25 @@ del '/user/:userid' => sub {
 	# return the mock data in JSON
 	return $self->render( json => { success => 1 } );
 };
+
+# Function to retrieve products from DB
+sub _get_product {
+	my ($product_id) = @_;
+
+	# Validate parsed data to avoid SQL injection et al.
+	$product_id = undef
+		unless $product_id =~ m/^\d+$/;
+
+	my $sql = "SELECT id, name, stock FROM product";
+	$sql .= " WHERE id = $product_id"
+		if $product_id;
+
+	# Fetch all products from DB
+	my @products = $db->query($sql)->hashes->each;
+
+	# return the processed data in JSON
+	return { products => \@products };
+}
 
 # Run the application
 $app->start;
