@@ -23,3 +23,11 @@ CREATE TABLE "cart" (
 );
 
 CREATE INDEX "cart_id_product_id" ON "cart" ("product_id");
+
+CREATE TABLE "session" (
+  "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+  "user_id" INTEGER NOT NULL,
+  "token" TEXT NOT NULL,
+  "created" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY ("user_id") REFERENCES "user"("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
