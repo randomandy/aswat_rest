@@ -5,9 +5,9 @@ use warnings;
 
 use Mojolicious::Lite;
 use Mojo::SQLite;
-
-# Class to format data for debugging and logging
 use Data::Dumper;
+
+plugin 'basic_auth';
 
 # Rewriting the app handler into my own valid Perl object
 # quick note: 'app' is a keyword added by the Mojolicious framework
@@ -24,6 +24,77 @@ my $app = app;
 #TODO move to config
 my $sql = Mojo::SQLite->new('sqlite:aswat_shop.db');
 my $db 	= $sql->db;
+
+# Route to get new session via GET /product
+get '/session/' => sub {
+	my ($self) = @_;
+
+	$app->log->debug("[Auth] Trying to authorize basic auth: "
+		. $self->req->headers->authorization);
+
+	# Fetch all users from DB for later authentication
+	my $sql   = 'SELECT id, name, password FROM user';
+	my @users = $db->query($sql)->hashes->each;
+	my %user_pwd_strings;
+
+	foreach my $user (@users) {
+		# Copy user string for basic auth and store user ID for session
+		my $auth_string = $user->{name} . " " . $user->{password};
+		$user_pwd_strings{$auth_string} = $user->{id};
+	}
+	$app->log->debug("[/session] All users: ". Dumper(\%user_pwd_strings));
+
+	# Authenticate user passed via basic auth with previsously fetched users
+	# and create new session in DB
+
+	# If user is authenticated
+	my $authorized_user_id;
+	if ($self->basic_auth( realm => sub {
+			if (exists $user_pwd_strings{"@_"}) {
+				$authorized_user_id = $user_pwd_strings{"@_"};
+				return 1;
+			}
+		}))
+	{
+		$app->log->debug("User ID Authorized: '$authorized_user_id'");
+
+		# check for old session
+#TODO check if DB operation was succesful
+		my $sql = 'SELECT id, created FROM session '
+			. 'WHERE user_id = ?';
+		my $session = $db->query($sql, ( $authorized_user_id ))->hash;
+
+		if ($session) {
+			$app->log->debug("Session already exists for User ID "
+				. "'$authorized_user_id': " . Dumper($session));
+
+			# delete / update session
+
+			return $self->render( json => { session => $session} );
+		}
+
+		# create session
+	#TODO generate secure token
+		my $new_session_token = '123abc';
+		my @values = (
+			$authorized_user_id,
+			$new_session_token
+		);
+#TODO check if DB operation was succesful
+		$sql = 'INSERT INTO session (user_id, token) VALUES (?, ?)';
+		$db->query($sql, @values);
+
+		$app->log->debug("New session key '$new_session_token' added for User "
+			. "ID: '$authorized_user_id'");
+
+		return $self->render( json => { session_token => $new_session_token} );
+	} 
+
+	# Deny access if DB user validation was unsuccessful
+	$app->log->debug("User access denied");
+
+	return;
+};
 
 # Route to fetch all products via GET /product
 # No need for AUTH here, it's public data
