@@ -57,8 +57,6 @@ get '/session/' => sub {
 		$app->log->debug("User ID Authorized: '$authorized_user_id'");
 
 		# Check for old session
-#TODO check if DB operation was successful
-
 		my $sql = "SELECT id, datetime(created, 'localtime') AS created "
 			. 'FROM session WHERE user_id = ?';
 		my $session = $db->query($sql, ( $authorized_user_id ))->hash;
@@ -72,7 +70,7 @@ get '/session/' => sub {
 			$db->query($sql, $authorized_user_id)->hash;
 		}
 
-		# create session
+		# Create session
 #TODO generate secure token
 		my $new_session_token = "123abc " . localtime;
 		my @values = (
@@ -134,7 +132,7 @@ get '/product/:id' => sub {
 get '/cart' => sub {
 	my ($self) = @_;
 
-	# Fetch the session token from the HTTP header
+	# Authorize session token and get User ID
 	my $user_id = _is_authorized($self->req->headers->header('x-aswat-token'));
 	$app->log->debug("User ID extracted from session: " . Dumper($user_id));
 
@@ -164,7 +162,7 @@ get '/cart' => sub {
 put '/cart/:productid' => sub {
 	my ($self) = @_;
 
-	# Fetch the session token from the HTTP header
+	# Authorize session token and get User ID
 	my $user_id = _is_authorized($self->req->headers->header('x-aswat-token'));
 	$app->log->debug("User ID extracted from session: " . Dumper($user_id));
 
@@ -245,7 +243,7 @@ put '/cart/:productid' => sub {
 del '/cart/:productid' => sub {
 	my ($self) = @_;
 
-	# Fetch the session token from the HTTP header
+	# Authorize session token and get User ID
 	my $user_id = _is_authorized($self->req->headers->header('x-aswat-token'));
 	$app->log->debug("User ID extracted from session: " . Dumper($user_id));
 
