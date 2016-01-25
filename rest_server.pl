@@ -300,38 +300,43 @@ del '/cart/:productid' => sub {
 post '/user' => sub {
 	my ($self) = @_;
 
-	# Fetch the session token from the HTTP header
-#TODO validate session token (max length)
-	my $session_token = $self->req->headers->header('x-aswat-token');
+	# Extract user data from session token
+	my $user = _authorize_user($self->req->headers->header('x-aswat-token'));
+	$app->log->debug("User extracted from session: " . Dumper($user));
 
-	$app->log->debug("[/user] Payload: " . Dumper($self->req->json));
-	my $hashref_payload = $self->req->json;
+	# Get all users from DB
+	my $sql   = 'SELECT id, name, password, is_admin FROM user';
+	my @users = $db->query($sql)->hashes->each;
+	$app->log->debug("All users in DB: " . Dumper(\@users));
+
+	# Return 401 if user is not authorized. Only admin can create new user
+	unless ($user && $user->{is_admin}) {
+		$self->res->code(401);
+		return $self->render(json => {error => 'access denied'});
+	}
+
+	my $new_user = $self->req->json;
+	$app->log->debug("[/user] Payload: " . Dumper($new_user));
 
 	# Set default return values
 	my $success_status = 0;
 	my $return_message = "Unable to parse payload. Invalid format?";
 
 	# Check if payload was successfully decoded from JSON
-	if (ref($hashref_payload) eq 'HASH') {
+	if (ref($new_user) eq 'HASH') {
 
-#TODO Fetch all users (only usernames) from DB for later authentication
-		my @users = (
-			{
-				name 	 => 'billgates',
-				password => 'linuxrules'
-			},
-			{
-				name 	 => 'linustorvalds',
-				password => 'ilovexbox'
-			},
-		);
+		# Return 400 unless parsed values pass validation
+		unless ( _is_userdata_valid($new_user) ) {
+			$self->res->code(400);
+			return $self->render(json => {error => 'invalid format'});
+		}
 
 		# Check if user already exists. Update or create
-		my $username_payload = $hashref_payload->{user};
+		my $username_payload = $new_user->{username};
 		my $user_exists 	 = 0;
-		foreach my $user_in_db (@users) {
+		foreach my $user (@users) {
 			$user_exists = 1
-				if $user_in_db->{name} eq $username_payload;
+				if $user->{name} eq $username_payload;
 		}
 
 		# If user exists, return error
@@ -345,13 +350,20 @@ post '/user' => sub {
 			$return_message = "New user added successfully";
 			$success_status = 1;
 
-			# Prepare data for DB
-			my @new_user = (
-				$hashref_payload->{user},
-				$hashref_payload->{password}
+			$new_user->{is_admin} = 0
+				unless $new_user->{is_admin};
+
+			my @values = (
+				$new_user->{username},
+				$new_user->{password},
+				$new_user->{is_admin}
 			);
-#TODO write new user to DB
-#TODO add validation, prevent SQL injection
+
+			$sql = "INSERT INTO user (name, password, is_admin) "
+				. "VALUES (?, ?, ?)";
+			$db->query($sql, @values);
+
+			$app->log->debug("New user created: " . Dumper($new_user));
 		}
 	}
 
@@ -479,7 +491,7 @@ sub _is_authorized {
 	return $session->{user_id};
 }
 
-sub _get_authorized_user {
+sub _authorize_user {
 	my ($session_token) = @_;
 
 	# Validate session token. Invalid if longer than MD5 32 chars
@@ -509,6 +521,20 @@ sub _get_authorized_user {
 	my $user = $db->query($sql, $session->{user_id})->hash;	
 
 	return $user;
+}
+
+sub _is_userdata_valid {
+	my ($user_candidate) = @_;
+
+	# Username has to be min 3, max 10 chars and only alphanumeric
+	return
+		unless $user_candidate->{username} =~ m/^[a-zA-B0-9]{3,10}$/;
+
+	# Password has to be min 4, max 30 chars
+	return
+		unless $user_candidate->{password} =~ m/^.{4,30}$/;
+
+	return 1;
 }
 
 # Run the application
