@@ -105,7 +105,6 @@ del '/session' => sub {
 	my $sql = "DELETE FROM session WHERE token = ?";
 	$db->query($sql, $session_token)->hash;
 
-	# return the mock data in JSON
 	return $self->render( json => {success => 1} );
 };
 
@@ -293,7 +292,6 @@ del '/cart/:productid' => sub {
 	$db->query($sql, @values);
 	$app->log->debug("[/cart] One product moved back to stock");
 
-	# return the mock data in JSON
 	return $self->render(json => {success => 1});
 };
 
@@ -386,7 +384,6 @@ put '/user/:userid' => sub {
 	# Write debug to STDOUT
 	$app->log->debug("[/user] Session: " . Dumper($session_token));
 
-	# return the mock data in JSON
 	return $self->render( json => { success => 1 } );
 };
 
@@ -437,7 +434,6 @@ del '/user/:userid' => sub {
 	# Write debug to STDOUT
 	$app->log->debug("[/user] Session: " . Dumper($session_token));
 
-	# return the mock data in JSON
 	return $self->render( json => { success => 1 } );
 };
 
