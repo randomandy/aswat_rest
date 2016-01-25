@@ -181,7 +181,7 @@ put '/cart/:productid' => sub {
 	my $product = $db->query($sql, $product_id)->hash;
 	$app->log->debug("[/cart] Product details: " . Dumper($product));
 
-	# Check if product is in stock
+	# Return 410 and error message if product is out of stock
 	if ($product->{stock} <= 0) {
 		$app->log->debug("[/cart] Product '$product_id' out of stock");
 		$self->res->code(410);
@@ -267,7 +267,7 @@ del '/cart/:productid' => sub {
 		. "WHERE product_id = ? AND user_id = ?";
 	my $product_in_cart = $db->query($sql, ($product_id, $user_id))->hash;
 
-	# If product cannot be found in cart
+	# Return 404 and error message if product cannot be found in cart
 	unless ($product_in_cart) {
 		$self->res->code(404);
 		return $self->render(json => {error => 'product not found in cart'});
