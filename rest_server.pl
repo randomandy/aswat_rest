@@ -67,7 +67,7 @@ get '/session/' => sub {
 
 			# Delete old session
 			my $sql = "DELETE FROM session WHERE user_id = ?";
-			$db->query($sql, $authorized_user_id)->hash;
+			$db->query($sql, $authorized_user_id);
 		}
 
 		# Create session
@@ -500,18 +500,28 @@ get '/user' => sub {
 del '/user/:userid' => sub {
 	my ($self) = @_;
 
-	# Fetch the session token from the HTTP header
-#TODO validate session token (max length)
-	my $session_token = $self->req->headers->header('x-aswat-token');
+	# Extract user data from session token
+	my $user = _authorize_user($self->req->headers->header('x-aswat-token'));
+	$app->log->debug("User extracted from session: " . Dumper($user));
+
+	# Return 401 if user is not authorized. Only admin can edit user
+	unless ($user && $user->{is_admin}) {
+		$self->res->code(401);
+		return $self->render(json => {error => 'access denied'});
+	}
 
 	# Fetch product ID parameter
-#TODO validate ID (int, max length)
 	my $user_id = $self->stash('userid');
 
-#TODO delete user
+	# Return 400 unless parsed values pass validation
+	unless ( $user_id =~ m/^[0-9]{1,5}$/ ) {
+		$self->res->code(400);
+		return $self->render(json => {error => 'invalid user id'});
+	}
 
-	# Write debug to STDOUT
-	$app->log->debug("[/user] Session: " . Dumper($session_token));
+	# Delete user
+	my $sql = "DELETE FROM user WHERE id = ?";
+	$db->query($sql, $user_id);
 
 	return $self->render( json => { success => 1 } );
 };
