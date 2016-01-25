@@ -5,6 +5,7 @@ use warnings;
 
 use Mojolicious::Lite;
 use Mojo::SQLite;
+use Date::Parse;
 use Data::Dumper;
 
 plugin 'basic_auth';
@@ -56,8 +57,6 @@ get '/session/' => sub {
 		$app->log->debug("User ID Authorized: '$authorized_user_id'");
 
 		# Check for old session
-#TODO check if DB operation was successful
-
 		my $sql = "SELECT id, datetime(created, 'localtime') AS created "
 			. 'FROM session WHERE user_id = ?';
 		my $session = $db->query($sql, ( $authorized_user_id ))->hash;
@@ -66,13 +65,12 @@ get '/session/' => sub {
 			$app->log->debug("Session already exists for User ID "
 				. "'$authorized_user_id': " . Dumper($session));
 
-#TODO add transaction
 			# Delete old session
 			my $sql = "DELETE FROM session WHERE user_id = ?";
 			$db->query($sql, $authorized_user_id)->hash;
 		}
 
-		# create session
+		# Create session
 #TODO generate secure token
 		my $new_session_token = "123abc " . localtime;
 		my @values = (
@@ -103,12 +101,10 @@ del '/session' => sub {
 #TODO validate session token (max length)
 	my $session_token = $self->req->headers->header('x-aswat-token');
 
-#TODO add transaction
 	# Delete old session
 	my $sql = "DELETE FROM session WHERE token = ?";
 	$db->query($sql, $session_token)->hash;
 
-	# return the mock data in JSON
 	return $self->render( json => {success => 1} );
 };
 
@@ -135,111 +131,168 @@ get '/product/:id' => sub {
 get '/cart' => sub {
 	my ($self) = @_;
 
-	# Fetch the session token from the HTTP header
-	my $session_token = $self->req->headers->header('x-aswat-token');
+	# Authorize session token and get User ID
+	my $user_id = _is_authorized($self->req->headers->header('x-aswat-token'));
+	$app->log->debug("User ID extracted from session: " . Dumper($user_id));
 
-#TODO fetch user cart based on session token
+	# Return 401 if user is not authorized
+	unless ($user_id) {
+		$self->res->code(401);
+		return $self->render(json => {error => 'access denied'});
+	}
 
-	# Write debug to STDOUT
-	$app->log->debug("[/cart] Session: " . Dumper($session_token));
+	# Fetch all cart entries for logged in user
+	my $sql  = 'SELECT id, product_id, quantity FROM cart WHERE user_id = ?';
+	my @cart = $db->query($sql, $user_id)->hashes->each;
 
-	# MOCK DATA
-	my $cart_id = 1;
-	my @product_ids_in_cart = (
-		{
-			id => 1,
-			quantity => 1
-		},
-		{
-			id => 2,
-			quantity => 3
-		}
-	);
+	# Get product details for each product in cart
+	foreach my $product (@cart) {
+		my $sql 		 = 'SELECT name FROM product WHERE id = ?';
+		$product->{name} = $db->query($sql, $product->{product_id})->hash;
+	}
 
-	my $mock_cart = {
-		id => $cart_id,
-		products => \@product_ids_in_cart,
-	};
+	$app->log->debug("Cart for User ID '$user_id': " . Dumper(\@cart));
 
-	# return the mock data in JSON
-	return $self->render( json => $mock_cart );
+	# Return array of products in cart
+	return $self->render( json => \@cart );
 };
 
 # Route to add product to user cart via PUT /cart/123
 put '/cart/:productid' => sub {
 	my ($self) = @_;
 
-	# Fetch the session token from the HTTP header
-#TODO validate session token (max length)
-	my $session_token = $self->req->headers->header('x-aswat-token');
+	# Authorize session token and get User ID
+	my $user_id = _is_authorized($self->req->headers->header('x-aswat-token'));
+	$app->log->debug("User ID extracted from session: " . Dumper($user_id));
+
+	# Return 401 if user is not authorized
+	unless ($user_id) {
+		$self->res->code(401);
+		return $self->render(json => {error => 'access denied'});
+	}
 
 	# Fetch product ID parameter
 #TODO validate ID (int, max length)
 	my $product_id = $self->stash('productid');
 
-	# MOCK DATA
-	my $cart_id = 1;
-	my @product_ids_in_cart = (
-		{
-			id => 1,
-			quantity => 1
-		},
-		{
-			id => 2,
-			quantity => 3
-		}
-	);
+	# Get product details
+	my $sql 	= 'SELECT id, name, stock FROM product WHERE id = ?';
+	my $product = $db->query($sql, $product_id)->hash;
+	$app->log->debug("[/cart] Product details: " . Dumper($product));
 
-	my $mock_cart = {
-		id => $cart_id,
-		products => \@product_ids_in_cart,
-	};
+	# Return 410 and error message if product is out of stock
+	if ($product->{stock} <= 0) {
+		$app->log->debug("[/cart] Product '$product_id' out of stock");
+		$self->res->code(410);
+		return $self->render(json => {error => 'out of stock'});
+	}
 
-	# Write debug to STDOUT
-	$app->log->debug("[/cart] Session: " . Dumper($session_token));
-	$app->log->debug("[/cart] Adding product '$product_id' to cart '$cart_id'");
+	# Check if product is already in cart
+	$sql = "SELECT id, quantity FROM cart "
+		. "WHERE product_id = ? AND user_id = ?";
+	my $product_in_cart = $db->query($sql, ($product_id, $user_id))->hash;	
 
-	# return the mock data in JSON
-	return $self->render( json => $mock_cart );
+	# Begin DB transaction
+	my $tx = $db->begin;
+
+	# Increase quantity in cart if product is already in cart
+	# Check if product is already in cart
+	my $new_cart_entry_id = undef;
+
+	if ($product_in_cart) {
+		$app->log->debug("[/cart] Product already in cart. Quantity: "
+			. "'$product_in_cart->{quantity}'. Adding one more...");
+
+		my $sql    = 'UPDATE cart SET quantity = ? WHERE id = ?';
+		my @values = ($product_in_cart->{quantity} +1, $product_in_cart->{id});
+		$db->query($sql, @values);
+		$new_cart_entry_id = 1;
+
+	# Add product to cart unless already in cart
+	} else {
+		$app->log->debug("[/cart] Adding product '$product_id' to cart...");
+		my $sql    = "INSERT INTO cart (user_id, product_id, quantity) "
+			. "VALUES (?, ?, ?)";
+		my @values = ($user_id, $product_id, 1);
+		$new_cart_entry_id = $db->query($sql, @values)->last_insert_id;
+	}
+
+	# Remove product from stock
+	my $new_product_stock = $product->{stock} - 1;
+	$sql = 'UPDATE product SET stock = ? WHERE id = ?';
+	$db->query($sql, ($new_product_stock, $product_id));
+	$app->log->debug("[/cart] New product stock: '$new_product_stock'");
+
+	# Rollback DB transaction if any DB operiation failed
+	unless ($new_cart_entry_id) {
+		# Auto rollback transaction
+		$app->log->debug("[/cart] DB update failed. Rollback.");
+		$tx = undef;
+
+		return $self->render(json => {success => 0});
+	}
+
+	# Commit DB transaction
+	$tx->commit;
+
+	return $self->render(json => {success => 1});
 };
 
 # Route to remove product from user cart via DELETE /cart/123
 del '/cart/:productid' => sub {
 	my ($self) = @_;
 
-	# Fetch the session token from the HTTP header
-#TODO validate session token (max length)
-	my $session_token = $self->req->headers->header('x-aswat-token');
+	# Authorize session token and get User ID
+	my $user_id = _is_authorized($self->req->headers->header('x-aswat-token'));
+	$app->log->debug("User ID extracted from session: " . Dumper($user_id));
+
+	# Return 401 if user is not authorized
+	unless ($user_id) {
+		$self->res->code(401);
+		return $self->render(json => {error => 'access denied'});
+	}
 
 	# Fetch product ID parameter
 #TODO validate ID (int, max length)
 	my $product_id = $self->stash('productid');
 
-	# MOCK DATA
-	my $cart_id = 1;
-	my @product_ids_in_cart = (
-		{
-			id => 1,
-			quantity => 1
-		},
-		{
-			id => 2,
-			quantity => 3
-		}
-	);
+	# Get product details
+	my $sql 	= 'SELECT id, name, stock FROM product WHERE id = ?';
+	my $product = $db->query($sql, $product_id)->hash;
+	$app->log->debug("[/cart] Product details: " . Dumper($product));
 
-	my $mock_cart = {
-		id => $cart_id,
-		products => \@product_ids_in_cart,
-	};
+	# Check if product is in cart
+	$sql = "SELECT id, quantity FROM cart "
+		. "WHERE product_id = ? AND user_id = ?";
+	my $product_in_cart = $db->query($sql, ($product_id, $user_id))->hash;
 
-	# Write debug to STDOUT
-	$app->log->debug("[/cart] Session: " . Dumper($session_token));
-	$app->log->debug("[/cart] Removing product '$product_id' "
-		. "from cart '$cart_id'");
+	# Return 404 and error message if product cannot be found in cart
+	unless ($product_in_cart) {
+		$self->res->code(404);
+		return $self->render(json => {error => 'product not found in cart'});
+	}
 
-	# return the mock data in JSON
-	return $self->render( json => $mock_cart );
+	# If product is in cart only once, delete from cart
+	if ($product_in_cart->{quantity} == 1) {
+		my $sql = "DELETE FROM cart WHERE user_id = ? AND product_id = ?";
+		$db->query($sql, ($user_id, $product_id))->hash;
+		$app->log->debug("[/cart] Product deleted from cart");
+
+	# If product is in cart more than once, reduce quantity by one
+	} elsif ($product_in_cart->{quantity} >= 2) {
+		my $sql    = 'UPDATE cart SET quantity = ? WHERE id = ?';
+		my @values = ($product_in_cart->{quantity} -1, $product_in_cart->{id});
+		$db->query($sql, @values);
+		$app->log->debug("[/cart] One product removed from cart");
+	}
+
+	# Add product back to stock
+	$sql 	   = 'UPDATE product SET stock = ? WHERE id = ?';
+	my @values = ($product->{stock} +1, $product->{id});
+	$db->query($sql, @values);
+	$app->log->debug("[/cart] One product moved back to stock");
+
+	return $self->render(json => {success => 1});
 };
 
 # Route to add new user via POST /user
@@ -331,7 +384,6 @@ put '/user/:userid' => sub {
 	# Write debug to STDOUT
 	$app->log->debug("[/user] Session: " . Dumper($session_token));
 
-	# return the mock data in JSON
 	return $self->render( json => { success => 1 } );
 };
 
@@ -382,7 +434,6 @@ del '/user/:userid' => sub {
 	# Write debug to STDOUT
 	$app->log->debug("[/user] Session: " . Dumper($session_token));
 
-	# return the mock data in JSON
 	return $self->render( json => { success => 1 } );
 };
 
@@ -409,7 +460,7 @@ sub _is_authorized {
 	my ($session_token) = @_;
 
 	# Check if session token is valid/exists in db
-	my $sql = "SELECT id, datetime(created, 'localtime') AS created "
+	my $sql = "SELECT id, user_id, datetime(created, 'localtime') AS created "
 		. 'FROM session WHERE token = ?';
 	my $session = $db->query($sql, $session_token)->hash;
 
@@ -421,11 +472,11 @@ sub _is_authorized {
 	my ($ss_now,$mm_now,$hh_now,$day_now,$month_now,$year_now) = localtime;
 
 	return
-		unless $year != $year_now
-			&& $month != $month_now
-			&& $day != $day_now;
+		if $year != $year_now
+			|| $month != $month_now
+			|| $day != $day_now;
 
-	return 1;
+	return $session->{user_id};
 }
 
 # Run the application
