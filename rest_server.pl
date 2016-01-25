@@ -477,30 +477,23 @@ put '/user/:userid' => sub {
 get '/user' => sub {
 	my ($self) = @_;
 
-	# Fetch the session token from the HTTP header
-#TODO validate session token (max length)
-	my $session_token = $self->req->headers->header('x-aswat-token');
+	# Extract user data from session token
+	my $user = _authorize_user($self->req->headers->header('x-aswat-token'));
+	$app->log->debug("User extracted from session: " . Dumper($user));
 
-#TODO fetch all users from DB
-		my @mock_users = (
-			{
-				id 		 => 1,
-				name 	 => 'billgates',
-				password => 'linuxrules'
-			},
-			{
-				id 		 => 2,
-				name 	 => 'linustorvalds',
-				password => 'ilovexbox'
-			},
-		);
+	# Return 401 if user is not authorized. Only admin can edit user
+	unless ($user && $user->{is_admin}) {
+		$self->res->code(401);
+		return $self->render(json => {error => 'access denied'});
+	}
 
+	# Get all users from DB
+	$sql 	  = 'SELECT id, name, password, is_admin FROM user';
+	my @users = $db->query($sql)->hashes->each;
+	$app->log->debug("All users in DB: " . Dumper(\@users));
 
-	# Write debug to STDOUT
-	$app->log->debug("[/user] Session: " . Dumper($session_token));
-
-	# return the mock data in JSON
-	return $self->render( json => { users => \@mock_users } );
+	# return user array
+	return $self->render(json => { users => \@users });
 };
 
 # Route to update user via PUT /user/123
