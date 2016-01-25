@@ -67,7 +67,6 @@ get '/session/' => sub {
 			$app->log->debug("Session already exists for User ID "
 				. "'$authorized_user_id': " . Dumper($session));
 
-#TODO add transaction
 			# Delete old session
 			my $sql = "DELETE FROM session WHERE user_id = ?";
 			$db->query($sql, $authorized_user_id)->hash;
@@ -104,7 +103,6 @@ del '/session' => sub {
 #TODO validate session token (max length)
 	my $session_token = $self->req->headers->header('x-aswat-token');
 
-#TODO add transaction
 	# Delete old session
 	my $sql = "DELETE FROM session WHERE token = ?";
 	$db->query($sql, $session_token)->hash;
@@ -183,6 +181,7 @@ put '/cart/:productid' => sub {
 	# Get product details
 	my $sql 	= 'SELECT id, name, stock FROM product WHERE id = ?';
 	my $product = $db->query($sql, $product_id)->hash;
+	$app->log->debug("[/cart] Product details: " . Dumper($product));
 
 	# Check if product is in stock
 	if ($product->{stock} <= 0) {
@@ -192,33 +191,53 @@ put '/cart/:productid' => sub {
 	}
 
 	# Check if product is already in cart
-	$sql = 'SELECT id, quantity FROM cart "
-		. "WHERE product_id = ? AND user_id = ?';
+	$sql = "SELECT id, quantity FROM cart "
+		. "WHERE product_id = ? AND user_id = ?";
 	my $product_in_cart = $db->query($sql, ($product_id, $user_id))->hash;	
 
-#TODO add db transaction
+	# Begin DB transaction
+	my $tx = $db->begin;
+
 	# Increase quantity in cart if product is already in cart
+	# Check if product is already in cart
+	my $new_cart_entry_id = undef;
+
 	if ($product_in_cart) {
-		$app->log->debug("[/cart] Product already in cart. Increasing...");
+		$app->log->debug("[/cart] Product already in cart. Quantity: "
+			. "'$product_in_cart->{quantity}'. Adding one more...");
+
 		my $sql    = 'UPDATE cart SET quantity = ? WHERE id = ?';
-		my @values = ($product_in_cart->{quantity}++, $product_in_cart->{id});
-		$db->query($sql, @values);
+		my @values = ($product_in_cart->{quantity} +1, $product_in_cart->{id});
+		$db->query($sql, @values)->last_insert_id;
+		$new_cart_entry_id = 1;
 
 	# Add product to cart unless already in cart
 	} else {
 		$app->log->debug("[/cart] Adding product '$product_id' to cart...");
-		my $sql    = 'INSERT INTO cart (user_id, product_id, quantity) "
-			. "VALUES (?, ?, ?)';
-		$db->query($sql, ($user_id, $product_id, 1));
+		my $sql    = "INSERT INTO cart (user_id, product_id, quantity) "
+			. "VALUES (?, ?, ?)";
+		my @values = ($user_id, $product_id, 1);
+		$new_cart_entry_id = $db->query($sql, @values)->last_insert_id;
 	}
 
 	# Remove product from stock
+	my $new_product_stock = $product->{stock} - 1;
 	$sql = 'UPDATE product SET stock = ? WHERE id = ?';
-	$db->query($sql, ($product->{stock}--, $product_id));
-	$app->log->debug("[/cart] Stock updated");
-	
+	$db->query($sql, ($new_product_stock, $product_id));
+	$app->log->debug("[/cart] New product stock: '$new_product_stock'");
 
-	# return the mock data in JSON
+	# Rollback DB transaction if any DB operiation failed
+	unless ($new_cart_entry_id) {
+		# Auto rollback transaction
+		$app->log->debug("[/cart] DB update failed. Rollback.");
+		$tx = undef;
+
+		return $self->render(json => {success => 0});
+	}
+
+	# Commit DB transaction
+	$tx->commit;
+
 	return $self->render(json => {success => 1});
 };
 
