@@ -322,49 +322,45 @@ post '/user' => sub {
 	my $success_status = 0;
 	my $return_message = "Unable to parse payload. Invalid format?";
 
-	# Check if payload was successfully decoded from JSON
-	if (ref($new_user) eq 'HASH') {
+	# Return 400 unless parsed values pass validation
+	unless ( _is_userdata_valid($new_user) ) {
+		$self->res->code(400);
+		return $self->render(json => {error => 'invalid format'});
+	}
 
-		# Return 400 unless parsed values pass validation
-		unless ( _is_userdata_valid($new_user) ) {
-			$self->res->code(400);
-			return $self->render(json => {error => 'invalid format'});
-		}
+	# Check if user already exists. Update or create
+	my $username_payload = $new_user->{username};
+	my $user_exists 	 = 0;
+	foreach my $user (@users) {
+		$user_exists = 1
+			if $user->{name} eq $username_payload;
+	}
 
-		# Check if user already exists. Update or create
-		my $username_payload = $new_user->{username};
-		my $user_exists 	 = 0;
-		foreach my $user (@users) {
-			$user_exists = 1
-				if $user->{name} eq $username_payload;
-		}
+	# If user exists, return error
+	if ($user_exists) {
+		$app->log->debug("User '$username_payload' already exists in DB");
+		$return_message = "Username already taken";
 
-		# If user exists, return error
-		if ($user_exists) {
-			$app->log->debug("User '$username_payload' already exists in DB");
-			$return_message = "Username already taken";
+	# If user doesn't exist, create new user
+	} else {
+		$app->log->debug("Creating new user '$username_payload'...");
+		$return_message = "New user added successfully";
+		$success_status = 1;
 
-		# If user doesn't exist, create new user
-		} else {
-			$app->log->debug("Creating new user '$username_payload'...");
-			$return_message = "New user added successfully";
-			$success_status = 1;
+		$new_user->{is_admin} = 0
+			unless $new_user->{is_admin};
 
-			$new_user->{is_admin} = 0
-				unless $new_user->{is_admin};
+		my @values = (
+			$new_user->{username},
+			$new_user->{password},
+			$new_user->{is_admin}
+		);
 
-			my @values = (
-				$new_user->{username},
-				$new_user->{password},
-				$new_user->{is_admin}
-			);
+		$sql = "INSERT INTO user (name, password, is_admin) "
+			. "VALUES (?, ?, ?)";
+		$db->query($sql, @values);
 
-			$sql = "INSERT INTO user (name, password, is_admin) "
-				. "VALUES (?, ?, ?)";
-			$db->query($sql, @values);
-
-			$app->log->debug("New user created: " . Dumper($new_user));
-		}
+		$app->log->debug("New user created: " . Dumper($new_user));
 	}
 
 	# Return JSON message with success status and message
@@ -380,23 +376,101 @@ post '/user' => sub {
 put '/user/:userid' => sub {
 	my ($self) = @_;
 
-	# Fetch the session token from the HTTP header
-#TODO validate session token (max length)
-	my $session_token = $self->req->headers->header('x-aswat-token');
-
 	# Fetch product ID parameter
-#TODO validate ID (int, max length)
 	my $user_id = $self->stash('userid');
 
-	$app->log->debug("[/user] Payload: " . Dumper($self->req->json));
-	my $hashref_payload = $self->req->json;
+	# Return 400 unless parsed values pass validation
+	unless ( $user_id =~ m/^[0-9]{1,5}$/ ) {
+		$self->res->code(400);
+		return $self->render(json => {error => 'invalid user id'});
+	}
 
-#TODO update user
+	# Extract user data from session token
+	my $user = _authorize_user($self->req->headers->header('x-aswat-token'));
+	$app->log->debug("User extracted from session: " . Dumper($user));
 
-	# Write debug to STDOUT
-	$app->log->debug("[/user] Session: " . Dumper($session_token));
+	# Return 401 if user is not authorized. Only admin can edit user
+	unless ($user && $user->{is_admin}) {
+		$self->res->code(401);
+		return $self->render(json => {error => 'access denied'});
+	}
 
-	return $self->render( json => { success => 1 } );
+	# Get old user data
+	my $sql 	 = 'SELECT name, password, is_admin FROM user WHERE id = ?';
+	my $old_user = $db->query($sql, $user_id)->hash;
+	$app->log->debug("Old user data: " . Dumper($old_user));
+
+	# Get all users from DB
+	$sql 	  = 'SELECT id, name, password, is_admin FROM user';
+	my @users = $db->query($sql)->hashes->each;
+	$app->log->debug("All users in DB: " . Dumper(\@users));
+
+	my $user_data = $self->req->json;
+	$app->log->debug("[/user] Payload: " . Dumper($user_data));
+
+	# Check if user already exists. Update or create
+	my $username_payload = $user_data->{username};
+	my $user_exists 	 = 0;
+	foreach my $user (@users) {
+		$user_exists = 1
+			if $user->{name} eq $username_payload;
+	}
+
+	# Set missing parameters to original values to pass validation
+	$user_data->{username} = $old_user->{name}
+		unless $user_data->{username};
+
+	$user_data->{password} = $old_user->{password}
+		unless $user_data->{password};
+
+	$user_data->{is_admin} = $old_user->{is_admin}
+		unless $user_data->{is_admin};
+
+	# Return 400 unless parsed values pass validation
+	unless ( _is_userdata_valid($user_data) ) {
+		$self->res->code(400);
+		return $self->render(json => {error => 'invalid format'});
+	}
+
+	# Set default return values
+	my $success_status = 0;
+	my $return_message = "Unable to parse payload. Invalid format?";
+
+	# If user exists, return error
+	if ($user_exists) {
+		$app->log->debug("User '$username_payload' already exists in DB");
+		$return_message = "Username already taken";
+
+	# If user doesn't exist, create new user
+	} else {
+		$app->log->debug("Editing user ID '$user_id'...");
+		$return_message = "User updated successfully";
+		$success_status = 1;
+
+		$user_data->{is_admin} = 0
+			unless $user_data->{is_admin};
+
+		my @values = (
+			$user_data->{username},
+			$user_data->{password},
+			$user_data->{is_admin},
+			$user_id
+		);
+
+		my $sql = "UPDATE user SET name = ?, password = ?, is_admin = ? "
+			. "WHERE id = ?";
+		$db->query($sql, @values);
+
+		$app->log->debug("User updated: " . Dumper($user_data));
+	}
+
+	# Return JSON message with success status and message
+	return $self->render(
+		json => {
+			success => $success_status,
+			message => $return_message
+		}
+	);
 };
 
 # Route get all users (admin only) via GET /user
