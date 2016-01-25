@@ -187,7 +187,7 @@ put '/cart/:productid' => sub {
 	if ($product->{stock} <= 0) {
 		$app->log->debug("[/cart] Product '$product_id' out of stock");
 		$self->res->code(410);
-		return $self->render(json => {error => 'out of stock'});	
+		return $self->render(json => {error => 'out of stock'});
 	}
 
 	# Check if product is already in cart
@@ -208,7 +208,7 @@ put '/cart/:productid' => sub {
 
 		my $sql    = 'UPDATE cart SET quantity = ? WHERE id = ?';
 		my @values = ($product_in_cart->{quantity} +1, $product_in_cart->{id});
-		$db->query($sql, @values)->last_insert_id;
+		$db->query($sql, @values);
 		$new_cart_entry_id = 1;
 
 	# Add product to cart unless already in cart
@@ -246,38 +246,57 @@ del '/cart/:productid' => sub {
 	my ($self) = @_;
 
 	# Fetch the session token from the HTTP header
-#TODO validate session token (max length)
-	my $session_token = $self->req->headers->header('x-aswat-token');
+	my $user_id = _is_authorized($self->req->headers->header('x-aswat-token'));
+	$app->log->debug("User ID extracted from session: " . Dumper($user_id));
+
+	# Return 401 if user is not authorized
+	unless ($user_id) {
+		$self->res->code(401);
+		return $self->render(json => {error => 'access denied'});
+	}
 
 	# Fetch product ID parameter
 #TODO validate ID (int, max length)
 	my $product_id = $self->stash('productid');
 
-	# MOCK DATA
-	my $cart_id = 1;
-	my @product_ids_in_cart = (
-		{
-			id => 1,
-			quantity => 1
-		},
-		{
-			id => 2,
-			quantity => 3
-		}
-	);
+	# Get product details
+	my $sql 	= 'SELECT id, name, stock FROM product WHERE id = ?';
+	my $product = $db->query($sql, $product_id)->hash;
+	$app->log->debug("[/cart] Product details: " . Dumper($product));
 
-	my $mock_cart = {
-		id => $cart_id,
-		products => \@product_ids_in_cart,
-	};
+	# Check if product is in cart
+	$sql = "SELECT id, quantity FROM cart "
+		. "WHERE product_id = ? AND user_id = ?";
+	my $product_in_cart = $db->query($sql, ($product_id, $user_id))->hash;
 
-	# Write debug to STDOUT
-	$app->log->debug("[/cart] Session: " . Dumper($session_token));
-	$app->log->debug("[/cart] Removing product '$product_id' "
-		. "from cart '$cart_id'");
+	# If product cannot be found in cart
+	unless ($product_in_cart) {
+		$self->res->code(404);
+		return $self->render(json => {error => 'product not found in cart'});
+	}
+
+	# If product is in cart only once, delete from cart
+	if ($product_in_cart->{quantity} == 1) {
+		my $sql = "DELETE FROM cart WHERE user_id = ? AND product_id = ?";
+		$db->query($sql, ($user_id, $product_id))->hash;
+		$app->log->debug("[/cart] Product deleted from cart");
+
+	# If product is in cart more than once, reduce quantity by one
+	} elsif ($product_in_cart->{quantity} >= 2) {
+		my $sql    = 'UPDATE cart SET quantity = ? WHERE id = ?';
+		my @values = ($product_in_cart->{quantity} -1, $product_in_cart->{id});
+		$db->query($sql, @values);
+		$app->log->debug("[/cart] One product removed from cart");
+	}
+
+	# Add product back to stock
+	$sql 	   = 'UPDATE product SET stock = ? WHERE id = ?';
+	my @values = ($product->{stock} +1, $product->{id});
+	$db->query($sql, @values);
+	$app->log->debug("[/cart] One product moved back to stock");
 
 	# return the mock data in JSON
-	return $self->render( json => $mock_cart );
+	return $self->render(json => {success => 1});
 };
 
 # Route to add new user via POST /user
