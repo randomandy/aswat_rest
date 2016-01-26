@@ -19,16 +19,7 @@ sub startup {
 	my $routes = $self->routes;
 
 	$routes->rest_routes( name => 'Session' );
-
-	# Installs following routes:
-
-	# /api/v1/accounts             ....  GET     "Account::list_account()"    ^/api/v1/accounts(?:\.([^/]+)$)?
-	# /api/v1/accounts             ....  POST    "Account::create_account()"  ^/api/v1/accounts(?:\.([^/]+)$)?
-	# /api/v1/accounts/:accountId  ....  DELETE  "Account::delete_account()"  ^/api/v1/accounts/([^\/\.]+)(?:\.([^/]+)$)?
-	# /api/v1/accounts/:accountId  ....  GET     "Account::read_account()"    ^/api/v1/accounts/([^\/\.]+)(?:\.([^/]+)$)?
-	# /api/v1/accounts/:accountId  ....  PUT     "Account::update_account()"  ^/api/v1/accounts/([^\/\.]+)(?:\.([^/]+)$)?
-
-
+	$routes->rest_routes( name => 'Product' );
 
 
 	# Normal route to controller
