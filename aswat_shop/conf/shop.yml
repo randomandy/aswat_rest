@@ -1,0 +1,4 @@
+### Aswat Shop Config ###
+
+# Database SQLite
+aswat_db_file: sqlite:db/aswat_shop.db
