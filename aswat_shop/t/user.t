@@ -82,13 +82,4 @@ $tx = $t->ua->build_tx(
 );
 $t->request_ok($tx)->status_is(200);
 
-
-
 done_testing();
-
-
-# my $tx = $t->ua->build_json_tx('/user/99' => {name => 'sri'});
-# $tx->req->method('PUT');
-# $t->request_ok($tx)
-#   ->status_is(200)
-#   ->json_is('/message' => 'User has been replaced.');
