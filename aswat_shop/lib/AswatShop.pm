@@ -18,9 +18,9 @@ sub startup {
 	# Router
 	my $routes = $self->routes;
 
-	$routes->rest_routes( name => 'Session' );
-	$routes->rest_routes( name => 'Product' );
-
+	$routes->rest_routes(name => 'Session');
+	$routes->rest_routes(name => 'Product');
+	$routes->rest_routes(name => 'Cart');
 
 	# Normal route to controller
 	$routes->get('/')->to('example#welcome');
