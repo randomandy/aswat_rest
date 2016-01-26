@@ -8,4 +8,5 @@ This project contains two different approaches to a simple REST API in Mojolicio
   * Single file application, easily portable
 * Full Mojolicious application
   * The same application but in a full scale Mojolicious MVC structure
-  * NOT MERGED YET -> WIP
+  * Can be found here: https://github.com/randomandy/aswat_rest/tree/master/aswat_shop
+  * DOCS WIP
