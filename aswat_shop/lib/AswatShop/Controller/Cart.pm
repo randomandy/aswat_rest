@@ -181,8 +181,13 @@ sub delete_cart {
 	my $user_id = $user->{id};
 
 	# Fetch product ID parameter
-#TODO validate ID (int, max length)
 	my $product_id = $self->stash('cartId');
+
+	# Return 400 unless parsed values pass validation
+	unless ( $product_id =~ m/^[0-9]{1,5}$/ ) {
+		$self->res->code(400);
+		return $self->render(json => {error => 'invalid user id'});
+	}
 
 	# Get product details
 	my $sql 	= 'SELECT id, name, stock FROM product WHERE id = ?';
