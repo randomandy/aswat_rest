@@ -185,6 +185,7 @@ sub create_user {
 	# Set default return values
 	my $success_status = 0;
 	my $return_message = "Unable to parse payload. Invalid format?";
+	my $new_user_id    = undef;
 
 	# Return 400 unless parsed values pass validation
 	unless ( _is_userdata_valid($new_user) ) {
@@ -222,7 +223,7 @@ sub create_user {
 
 		$sql = "INSERT INTO user (name, password, is_admin) "
 			. "VALUES (?, ?, ?)";
-		$db->query($sql, @values);
+		$new_user_id = $db->query($sql, @values)->last_insert_id;
 
 		$log->debug("New user created: " . Dumper($new_user));
 	}
@@ -231,7 +232,8 @@ sub create_user {
 	return $self->render(
 		json => {
 			success => $success_status,
-			message => $return_message
+			message => $return_message,
+			user_id => $new_user_id
 		}
 	);
 }
