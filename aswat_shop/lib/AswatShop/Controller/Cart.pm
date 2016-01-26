@@ -155,7 +155,7 @@ sub update_cart {
 	return $self->render(json => {success => 1});
 }
 
-# Add a product to the users cart
+# Remove a product from the users cart
 sub delete_cart {
 	my ($self) = @_;
 
