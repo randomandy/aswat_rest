@@ -21,8 +21,11 @@ sub list_cart {
 		$self->req->headers->header('x-aswat-token')
 	);
 
-	return
-		unless $user;
+	# Return 401 if user is not authorized
+	unless ($user) {
+		$self->res->code(401);
+		return $self->render(json => {error => 'access denied'});
+	}
 
 	# Initialize DB
 	my $db_file = $self->stash('config')->{aswat_db_file};
@@ -67,8 +70,11 @@ sub update_cart {
 		$self->req->headers->header('x-aswat-token')
 	);
 
-	return
-		unless $user;
+	# Return 401 if user is not authorized
+	unless ($user) {
+		$self->res->code(401);
+		return $self->render(json => {error => 'access denied'});
+	}
 
 	# Initialize DB
 	my $db_file = $self->stash('config')->{aswat_db_file};
@@ -145,6 +151,74 @@ sub update_cart {
 
 	# Commit DB transaction
 	$tx->commit;
+
+	return $self->render(json => {success => 1});
+}
+
+# Add a product to the users cart
+sub delete_cart {
+	my ($self) = @_;
+
+	# Get Authenticater
+	my $auth = AswatShop::Core::Auth->new($self->stash('config'));
+
+	# Authorize session token and get User Hash
+	my $user = $auth->getAuthorizedUser(
+		$self->req->headers->header('x-aswat-token')
+	);
+
+	# Return 401 if user is not authorized
+	unless ($user) {
+		$self->res->code(401);
+		return $self->render(json => {error => 'access denied'});
+	}
+
+	# Initialize DB
+	my $db_file = $self->stash('config')->{aswat_db_file};
+	my $sqlite 	= Mojo::SQLite->new($db_file);
+	my $db 		= $sqlite->db;
+
+	my $user_id = $user->{id};
+
+	# Fetch product ID parameter
+#TODO validate ID (int, max length)
+	my $product_id = $self->stash('cartId');
+
+	# Get product details
+	my $sql 	= 'SELECT id, name, stock FROM product WHERE id = ?';
+	my $product = $db->query($sql, $product_id)->hash;
+	$log->debug("[/cart] Product details: " . Dumper($product));
+
+	# Check if product is in cart
+	$sql = "SELECT id, quantity FROM cart "
+		. "WHERE product_id = ? AND user_id = ?";
+	my $product_in_cart = $db->query($sql, ($product_id, $user_id))->hash;
+
+	# Return 404 and error message if product cannot be found in cart
+	unless ($product_in_cart) {
+		$self->res->code(404);
+		return $self->render(json => {error => 'product not found in cart'});
+	}
+
+	# If product is in cart only once, delete from cart
+	if ($product_in_cart->{quantity} == 1) {
+		my $sql = "DELETE FROM cart WHERE user_id = ? AND product_id = ?";
+		$db->query($sql, ($user_id, $product_id))->hash;
+		$log->debug("[/cart] Product deleted from cart");
+
+	# If product is in cart more than once, reduce quantity by one
+	} elsif ($product_in_cart->{quantity} >= 2) {
+		my $sql    = 'UPDATE cart SET quantity = ? WHERE id = ?';
+		my @values = ($product_in_cart->{quantity} -1, $product_in_cart->{id});
+		$db->query($sql, @values);
+		$log->debug("[/cart] One product removed from cart");
+	}
+
+	# Add product back to stock
+	$sql 	   = 'UPDATE product SET stock = ? WHERE id = ?';
+	my @values = ($product->{stock} +1, $product->{id});
+	$db->query($sql, @values);
+	$log->debug("[/cart] One product moved back to stock");
 
 	return $self->render(json => {success => 1});
 }
