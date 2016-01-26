@@ -22,9 +22,6 @@ sub startup {
 	$routes->rest_routes(name => 'Product');
 	$routes->rest_routes(name => 'Cart');
 	$routes->rest_routes(name => 'User');
-
-	# Normal route to controller
-	$routes->get('/')->to('example#welcome');
 }
 
 1;

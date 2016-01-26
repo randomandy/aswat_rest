@@ -155,6 +155,85 @@ sub update_user {
 sub create_user {
 	my ($self) = @_;
 
+	# Get Authenticater
+	my $auth = AswatShop::Core::Auth->new($self->stash('config'));
+
+	# Authorize session token and get User Hash
+	my $user = $auth->getAuthorizedUser(
+		$self->req->headers->header('x-aswat-token')
+	);
+
+	# Return 401 if user is not authorized. Only admin can edit user
+	unless ($user && $user->{is_admin}) {
+		$self->res->code(401);
+		return $self->render(json => {error => 'access denied'});
+	}
+
+	# Initialize DB
+	my $db_file = $self->stash('config')->{aswat_db_file};
+	my $sqlite 	= Mojo::SQLite->new($db_file);
+	my $db 		= $sqlite->db;
+
+	# Get all users from DB
+	my $sql   = 'SELECT id, name, password, is_admin FROM user';
+	my @users = $db->query($sql)->hashes->each;
+	$log->debug("All users in DB: " . Dumper(\@users));
+
+	my $new_user = $self->req->json;
+	$log->debug("[/user] Payload: " . Dumper($new_user));
+
+	# Set default return values
+	my $success_status = 0;
+	my $return_message = "Unable to parse payload. Invalid format?";
+
+	# Return 400 unless parsed values pass validation
+	unless ( _is_userdata_valid($new_user) ) {
+		$self->res->code(400);
+		return $self->render(json => {error => 'invalid format'});
+	}
+
+	# Check if user already exists. Update or create
+	my $username_payload = $new_user->{username};
+	my $user_exists 	 = 0;
+	foreach my $user (@users) {
+		$user_exists = 1
+			if $user->{name} eq $username_payload;
+	}
+
+	# If user exists, return error
+	if ($user_exists) {
+		$log->debug("User '$username_payload' already exists in DB");
+		$return_message = "Username already taken";
+
+	# If user doesn't exist, create new user
+	} else {
+		$log->debug("Creating new user '$username_payload'...");
+		$return_message = "New user added successfully";
+		$success_status = 1;
+
+		$new_user->{is_admin} = 0
+			unless $new_user->{is_admin};
+
+		my @values = (
+			$new_user->{username},
+			$new_user->{password},
+			$new_user->{is_admin}
+		);
+
+		$sql = "INSERT INTO user (name, password, is_admin) "
+			. "VALUES (?, ?, ?)";
+		$db->query($sql, @values);
+
+		$log->debug("New user created: " . Dumper($new_user));
+	}
+
+	# Return JSON message with success status and message
+	return $self->render(
+		json => {
+			success => $success_status,
+			message => $return_message
+		}
+	);
 }
 
 # Deletes a user from the DB. Admin only
