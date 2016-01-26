@@ -66,7 +66,6 @@ sub create_session {
 			$authorized_user_id,
 			$new_session_token
 		);
-#TODO check if DB operation was succesful
 		$sql = 'INSERT INTO session (user_id, token) VALUES (?, ?)';
 		my $session_id = $db->query($sql, @values)->last_insert_id;
 
@@ -99,8 +98,13 @@ sub delete_session {
 	my $db 		= $sqlite->db;
 
 	# Fetch the session token from the HTTP header
-#TODO validate session token (max length)
 	my $session_token = $self->req->headers->header('x-aswat-token');
+
+	# Return 400 unless parsed values pass validation
+	unless ( $session_token =~ m/^[a-z0-9]{1,32}$/ ) {
+		$self->res->code(400);
+		return $self->render(json => {error => 'invalid user id'});
+	}
 
 	# Delete old session
 	my $sql = "DELETE FROM session WHERE token = ? AND id = ?";
