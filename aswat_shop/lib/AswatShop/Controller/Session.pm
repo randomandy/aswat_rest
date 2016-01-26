@@ -4,6 +4,7 @@ use Mojo::Base 'Mojolicious::Controller';
 use Mojo::Log;
 use Mojo::SQLite;
 use Data::Dumper;
+use Digest::MD5 qw(md5_hex);
 
 # Log to STDERR
 my $log = Mojo::Log->new;
@@ -60,8 +61,7 @@ sub create_session {
 		}
 
 		# Create session
-#TODO generate secure token
-		my $new_session_token = "123abc " . localtime;
+		my $new_session_token = md5_hex(localtime . 'secret');
 		my @values = (
 			$authorized_user_id,
 			$new_session_token
