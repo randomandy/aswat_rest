@@ -240,6 +240,39 @@ sub create_user {
 sub delete_user {
 	my ($self) = @_;
 
+	# Get Authenticater
+	my $auth = AswatShop::Core::Auth->new($self->stash('config'));
+
+	# Authorize session token and get User Hash
+	my $user = $auth->getAuthorizedUser(
+		$self->req->headers->header('x-aswat-token')
+	);
+
+	# Return 401 if user is not authorized. Only admin can edit user
+	unless ($user && $user->{is_admin}) {
+		$self->res->code(401);
+		return $self->render(json => {error => 'access denied'});
+	}
+
+	# Initialize DB
+	my $db_file = $self->stash('config')->{aswat_db_file};
+	my $sqlite 	= Mojo::SQLite->new($db_file);
+	my $db 		= $sqlite->db;
+
+	# Fetch product ID parameter
+	my $user_id = $self->stash('userId');
+
+	# Return 400 unless parsed values pass validation
+	unless ( $user_id =~ m/^[0-9]{1,5}$/ ) {
+		$self->res->code(400);
+		return $self->render(json => {error => 'invalid user id'});
+	}
+
+	# Delete user
+	my $sql 	= "DELETE FROM user WHERE id = ?";
+	my $success = $db->query($sql, $user_id)->rows;
+
+	return $self->render( json => { success => $success } );
 }
 
 sub _is_userdata_valid {
